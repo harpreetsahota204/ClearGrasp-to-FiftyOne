@@ -29,7 +29,6 @@ def create_fo_sample(media: dict, dataset: fo.Dataset) -> fo.Sample:
     Returns:
         fo.Sample: The FiftyOne Sample object with the image and its metadata.
     """
-    samples = []
 
     for scene_dir in scene_dirs:
         # Get all image files from scene directory
@@ -54,14 +53,14 @@ def create_fo_sample(media: dict, dataset: fo.Dataset) -> fo.Sample:
                 depth_map = depth_map.astype("uint8")
 
                 #split mask by instances
-                segs = fo.Segmentation(mask_path=masks_path).to_polylines(mask_types="thing", tolerance=1)['polylines']
-                for lines in segs:
-                lines.set_field("label", re.sub(r'-train$', '', os.path.basename(scene_dir)))
+                seg_masks = fo.Segmentation(mask_path=masks_path).to_polylines(mask_types="thing", tolerance=1)['polylines']
+                for seg_mask in seg_mask:
+                    lines.set_field("label", re.sub(r'-train$', '', os.path.basename(scene_dir)))
 
                 sample = fo.Sample(
                     filepath=image_path,
                     gt_depth=fo.Heatmap(map=depth_map),
-                    gt_segmentation_mask=fo.Polylines(polylines=segs),
+                    gt_segmentation_mask=fo.Polylines(polylines=seg_masks),
                     gt_outline=fo.Segmentation(mask_path=outlines_path),
                 )
 
@@ -92,7 +91,6 @@ def add_samples_to_fiftyone_dataset(
 if __name__ == "__main__":
     DATA_DIR = ""
     DATASET_NAME = "WayveScenes101"
-
 
     scene_metadata_filename = []
     for i, scene_dict in enumerate(scene_metadata):

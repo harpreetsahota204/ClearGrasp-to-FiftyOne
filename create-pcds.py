@@ -50,7 +50,7 @@ def process_scene(scene_dir, output_dir):
             color_image_array = utils.load_image_cv2(image_path)
 
             # Generate point cloud
-            pcd_path = os.path.join(output_dir, f"{base_name}-pcd.ply")
+            pcd_path = os.path.join(output_dir, f"{scene_name}_{base_name}.ply")
             utils.write_point_cloud(pcd_path, color_image_array, depth_array, fx, fy, cx, cy)
 
             #get quaternion
