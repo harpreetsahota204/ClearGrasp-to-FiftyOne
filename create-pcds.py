@@ -37,9 +37,9 @@ def process_scene(args):
     scene_name = os.path.basename(scene_dir).replace('-train', '')
     base_name = f"{i:09d}"
 
-    image_path = os.path.join(scene_dir, "rgb-imgs", f"{base_name}-rgb.jpg")
-    depth_path = os.path.join(scene_dir, "depth-imgs-rectified", f"{base_name}-depth-rectified.exr")
-    masks_path = os.path.join(scene_dir, "json-files", f"{base_name}-masks.json")
+    image_path = os.path.abspath(os.path.join(scene_dir, "rgb-imgs", f"{base_name}-rgb.jpg"))
+    depth_path = os.path.abspath(os.path.join(scene_dir, "depth-imgs-rectified", f"{base_name}-depth-rectified.exr"))
+    masks_path = os.path.abspath(os.path.join(scene_dir, "json-files", f"{base_name}-masks.json"))
 
     if all(os.path.exists(path) for path in [image_path, depth_path, masks_path]):
         depth_array = exr_loader(depth_path, ndim=1)
@@ -60,7 +60,7 @@ def process_scene(args):
                 )
 
         # Generate point cloud
-        pcd_path = os.path.join(output_dir, f"{scene_name}_{base_name}.ply")
+        pcd_path = os.path.abspath(os.path.join(output_dir, f"{scene_name}_{base_name}.ply"))
         write_point_cloud(pcd_path, color_image_array, depth_array, fx, fy, cx, cy)
 
         #get quaternion
@@ -85,7 +85,7 @@ def process_scene(args):
         # add to scene
         scene.add(mesh)
 
-        fo3d_path = os.path.join(output_dir, f"{scene_name}_{base_name}.fo3d")
+        fo3d_path = os.path.abspath(os.path.join(output_dir, f"{scene_name}_{base_name}.fo3d"))
 
         scene.write(fo3d_path)
         return True
@@ -108,7 +108,7 @@ def process_scenes(scene_dir, output_dir):
 
 
 if __name__ == "__main__":
-    base_dir = "./data/cleargrasp-dataset-train" 
+    base_dir = "/Users/harpreetsahota/workspace/ClearGrasp-to-FiftyOne/data/cleargrasp-dataset-train" 
     scene_dirs = sorted(glob(f"{base_dir}/*"))
     total_processed = 0  
     
