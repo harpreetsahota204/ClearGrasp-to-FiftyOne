@@ -50,7 +50,7 @@ def process_scene(scene_dir, output_dir):
             color_image_array = utils.load_image_cv2(image_path)
 
             # Generate point cloud
-            pcd_path = os.path.join(output_dir, f"{scene_name}_{base_name}.ply")
+            pcd_path = os.path.join(output_dir, f"{base_name}-pcd.ply")
             utils.write_point_cloud(pcd_path, color_image_array, depth_array, fx, fy, cx, cy)
 
             #get quaternion
@@ -88,11 +88,10 @@ def process_scene(scene_dir, output_dir):
 # Main execution
 if __name__ == "__main__":
     base_dir = "./data/cleargrasp-dataset-train"  # Replace with your dataset path
-    output_dir = f"{base_dir}/point-clouds"  # Replace with your desired output path
-    os.makedirs(output_dir, exist_ok=True)
 
-    scene_dirs = glob(f"{base_dir}/*")
     for scene_dir in scene_dirs:
+        output_dir = f"{scene_dir}/point-clouds"  # Replace with your desired output path
+        os.makedirs(output_dir, exist_ok=True)
         process_scene(os.path.join(base_dir, scene_dir), output_dir)
 
 print("PCD and FO3D generation complete")

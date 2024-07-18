@@ -29,21 +29,50 @@ def create_fo_sample(media: dict, dataset: fo.Dataset) -> fo.Sample:
     Returns:
         fo.Sample: The FiftyOne Sample object with the image and its metadata.
     """
-
-    sample_fields = {field: media.get(value) for field, value in fields.items()}
-
-    filepaths = media.get("file_paths")
-
     samples = []
 
-    group = fo.Group()
+    for scene_dir in scene_dirs:
+        # Get all image files from scene directory
+        image_paths = sorted(glob(f"{scene_dir}/rgb-imgs/*"))
 
-    for name, filepath in filepaths.items():
-      sample = fo.Sample(
-          filepath=filepath,
-          group=group.element(name),
-          **sample_fields)
-      samples.append(sample)
+        for i, image_path in enumerate(image_paths):
+            # Extract the base name (e.g., '000000000-rgb')
+            base_name = os.path.splitext(os.path.basename(image_path))[0]
+
+            # Remove the '-rgb' suffix for other file types
+            base_name_without_suffix = base_name.replace('-rgb', '')
+
+            # Construct paths for corresponding files
+            depth_path = f"{scene_dir}/depth-imgs-rectified/{base_name_without_suffix}-depth-rectified.exr"
+            masks_path = f"{scene_dir}/segmentation-masks/{base_name_without_suffix}-segmentation-mask.png"
+            outlines_path = f"{scene_dir}/outlines/{base_name_without_suffix}-outlineSegmentation.png"
+
+            # Check if all required files exist
+            if all(os.path.exists(path) for path in [depth_path, masks_path, outlines_path]):
+                depth_map = cv2.imread(depth_path, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+                depth_map = cv2.normalize(depth_map, None, 0, 255, cv2.NORM_MINMAX)
+                depth_map = depth_map.astype("uint8")
+
+                #split mask by instances
+                segs = fo.Segmentation(mask_path=masks_path).to_polylines(mask_types="thing", tolerance=1)['polylines']
+                for lines in segs:
+                lines.set_field("label", re.sub(r'-train$', '', os.path.basename(scene_dir)))
+
+                sample = fo.Sample(
+                    filepath=image_path,
+                    gt_depth=fo.Heatmap(map=depth_map),
+                    gt_segmentation_mask=fo.Polylines(polylines=segs),
+                    gt_outline=fo.Segmentation(mask_path=outlines_path),
+                )
+
+                samples.append(sample)
+            else:
+                print(f"Skipping {base_name} due to missing files")
+                print(f"  Image path: {image_path}")
+                print(f"  Depth path: {depth_path}")
+                print(f"  Masks path: {masks_path}")
+                print(f"  Outlines path: {outlines_path}")
+
 
     add_samples_to_fiftyone_dataset(dataset, samples)
 
@@ -61,13 +90,9 @@ def add_samples_to_fiftyone_dataset(
     dataset.add_samples(samples)
 
 if __name__ == "__main__":
-    DATA_DIR = "/Users/harpreetsahota/workspace/datasets/wayve_101"
+    DATA_DIR = ""
     DATASET_NAME = "WayveScenes101"
-    METADATA_CSV = os.path.join(DATA_DIR, "scene_metadata.csv")
 
-    # Read the CSV file
-    scene_metadata_df = pd.read_csv(METADATA_CSV)
-    scene_metadata = scene_metadata_df.to_dict(orient="records")
 
     scene_metadata_filename = []
     for i, scene_dict in enumerate(scene_metadata):
