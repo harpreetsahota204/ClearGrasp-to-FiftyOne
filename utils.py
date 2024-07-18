@@ -77,12 +77,14 @@ def exr_loader(EXR_PATH, ndim=3):
         exr_arr = np.array(channel)
         return exr_arr
 
-def calculate_camera_parameters(masks_dict):
+def calculate_camera_parameters(masks_dict=None, image_width=None, image_height=None):
     """
-    Calculate camera parameters from the provided dictionary.
+    Calculate camera parameters from the provided dictionary or direct image dimensions.
 
     Args:
-    masks_dict (dict): Dictionary containing camera and image information.
+    masks_dict (dict, optional): Dictionary containing camera and image information.
+    image_width (int, optional): Width of the image in pixels.
+    image_height (int, optional): Height of the image in pixels.
 
     Returns:
     tuple:
@@ -91,28 +93,41 @@ def calculate_camera_parameters(masks_dict):
         cx (int): The center of the image (along x-axis, pixels) as per camera used to capture image.
         cy (int): The center of the image (along y-axis, pixels) as per camera used to capture image.
     """
-    try:
-        camera_dict = masks_dict['camera']
-        image_dict = masks_dict['image']
+    if masks_dict is None and (image_width is None or image_height is None):
+        raise ValueError("Either masks_dict or both image_width and image_height must be provided")
 
-        image_width = image_dict['width_px']
-        image_height = image_dict['height_px']
+    if masks_dict is not None:
+        try:
+            camera_dict = masks_dict['camera']
+            fov_x_rad = camera_dict['field_of_view']['x_axis_rads']
+            fov_y_rad = camera_dict['field_of_view']['y_axis_rads']
+        except KeyError as e:
+            raise KeyError(f"Missing key in masks_dict: {e}")
 
-        fov_x_rad = camera_dict['field_of_view']['x_axis_rads']
-        fov_y_rad = camera_dict['field_of_view']['y_axis_rads']
+        if image_width is None or image_height is None:
+            try:
+                image_dict = masks_dict['image']
+                image_width = image_dict['width_px']
+                image_height = image_dict['height_px']
+            except KeyError as e:
+                raise KeyError(f"Missing key in masks_dict: {e}")
+    else:
+        # If masks_dict is not provided, we need to ensure both image dimensions are given
+        if image_width is None or image_height is None:
+            raise ValueError("Both image_width and image_height must be provided when masks_dict is not given")
+        
+        # In this case, we don't have fov values, so we can't calculate fx and fy
+        return None, None, int(image_width / 2), int(image_height / 2)
 
-        # Calculate focal lengths using the radian values
-        fx = int((image_width / 2) / math.tan(fov_x_rad / 2))
-        fy = int((image_height / 2) / math.tan(fov_y_rad / 2))
+    # Calculate focal lengths using the radian values
+    fx = int((image_width / 2) / math.tan(fov_x_rad / 2))
+    fy = int((image_height / 2) / math.tan(fov_y_rad / 2))
 
-        # Calculate principal point
-        cx = int(image_width / 2)
-        cy = int(image_height / 2)
+    # Calculate principal point
+    cx = int(image_width / 2)
+    cy = int(image_height / 2)
 
-        return fx, fy, cx, cy
-
-    except KeyError as e:
-      raise KeyError(f"Missing required key in dictionary: {e}")
+    return fx, fy, cx, cy
 
 def load_image_cv2(image_path):
     """

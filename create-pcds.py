@@ -1,6 +1,6 @@
 import os
 os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '1'
-
+import multiprocessing
 import re
 from glob import glob
 from tqdm import tqdm
@@ -8,7 +8,7 @@ from tqdm import tqdm
 from utils import calculate_camera_parameters, load_image_cv2, exr_loader, write_point_cloud, load_masks_dict
 import fiftyone as fo
 
-def process_scene(scene_dir, output_dir):
+def process_scene(args):
     """
     Process a single scene directory, generating point cloud (PCD) and FiftyOne 3D scene (FO3D) files.
 
@@ -33,65 +33,89 @@ def process_scene(scene_dir, output_dir):
     If any required file for a frame is missing, that frame is skipped with a warning message.
 
     """
+    scene_dir, output_dir, i = args
     scene_name = os.path.basename(scene_dir).replace('-train', '')
-    
-    for i in tqdm(range(101), desc=f"Processing {scene_name}"):
-        base_name = f"{i:09d}"  # This will generate '000000000', '000000001', etc.
+    base_name = f"{i:09d}"
 
-        image_path = os.path.join(scene_dir, "rgb-imgs", f"{base_name}-rgb.jpg")
-        depth_path = os.path.join(scene_dir, "depth-imgs-rectified", f"{base_name}-depth-rectified.exr")
-        masks_path = os.path.join(scene_dir, "json-files", f"{base_name}-masks.json")
+    image_path = os.path.join(scene_dir, "rgb-imgs", f"{base_name}-rgb.jpg")
+    depth_path = os.path.join(scene_dir, "depth-imgs-rectified", f"{base_name}-depth-rectified.exr")
+    masks_path = os.path.join(scene_dir, "json-files", f"{base_name}-masks.json")
 
-        if all(os.path.exists(path) for path in [image_path, depth_path, masks_path]):
-            masks_dict = utils.load_masks_dict(masks_path)
+    if all(os.path.exists(path) for path in [image_path, depth_path, masks_path]):
+        depth_array = exr_loader(depth_path, ndim=1)
+        color_image_array = load_image_cv2(image_path)
+        masks_dict = load_masks_dict(masks_path)
+
+        try:
+            # Try to calculate camera parameters using masks_dict
             fx, fy, cx, cy = calculate_camera_parameters(masks_dict)
+        except KeyError:
+            # If 'image' key is missing in masks_dict, use the fallback
+            # Get image dimensions from color_image_array
+            image_height, image_width = color_image_array.shape[:2]
+            fx, fy, cx, cy = calculate_camera_parameters(
+                masks_dict=masks_dict,
+                image_width=image_width, 
+                image_height=image_height
+                )
 
-            depth_array = utils.exr_loader(depth_path, ndim=1)
-            color_image_array = utils.load_image_cv2(image_path)
+        # Generate point cloud
+        pcd_path = os.path.join(output_dir, f"{scene_name}_{base_name}.ply")
+        write_point_cloud(pcd_path, color_image_array, depth_array, fx, fy, cx, cy)
 
-            # Generate point cloud
-            pcd_path = os.path.join(output_dir, f"{scene_name}_{base_name}.ply")
-            utils.write_point_cloud(pcd_path, color_image_array, depth_array, fx, fy, cx, cy)
+        #get quaternion
+        q_X, q_Y, q_Z, q_W = masks_dict['camera']['world_pose']['rotation']['quaternion']
+        quaternion = fo.Quaternion(x=q_X, y=q_Y, z=q_Z, w=q_W)
 
-            #get quaternion
-            q_X = masks_dict['camera']['world_pose']['rotation']['quaternion'][0]
-            q_Y = masks_dict['camera']['world_pose']['rotation']['quaternion'][1]
-            q_Z = masks_dict['camera']['world_pose']['rotation']['quaternion'][2]
-            q_W = masks_dict['camera']['world_pose']['rotation']['quaternion'][3]
+        # Create 3D scene
+        scene = fo.Scene(fo.PerspectiveCamera(up="Z"))
 
-            quaternion = fo.Quaternion(x=q_X, y=q_Y, z=q_Z, w=q_W)
+        # instantiate mesh
+        mesh = fo.PlyMesh(
+            base_name,
+            pcd_path,
+            is_point_cloud=True
+        )
 
-            # Create 3D scene
-            scene = fo.Scene(fo.PerspectiveCamera(up="Z"))
+        mesh.quaternion = quaternion
 
-            # instantiate mesh
-            mesh = fo.PlyMesh(
-                base_name,
-                pcd_path,
-                is_point_cloud=True
-            )
+        #set material
+        mesh.default_material = fo.PointCloudMaterial(shading_mode="rgb")
 
-            mesh.quaternion = quaternion
+        # add to scene
+        scene.add(mesh)
 
-            #set material
-            mesh.default_material = fo.PointCloudMaterial(shading_mode="rgb")
+        fo3d_path = os.path.join(output_dir, f"{scene_name}_{base_name}.fo3d")
 
-            # add to scene
-            scene.add(mesh)
+        scene.write(fo3d_path)
+        return True
+    else:
+        print(f"Skipping {base_name} due to missing files")
+        return False
 
-            fo3d_path = os.path.join(output_dir, f"{scene_name}_{base_name}.fo3d")
+def process_scenes(scene_dir, output_dir):
+    """
+    Process a single scene directory, generating point cloud (PCD) and FiftyOne 3D scene (FO3D) files.
+    """
+    scene_name = os.path.basename(scene_dir).replace('-train', '')
 
-            scene.write(fo3d_path)
-        else:
-            print(f"Skipping {base_name} due to missing files")
+    args_list = [(scene_dir, output_dir, i) for i in range(251)]
 
-# Main execution
+    with multiprocessing.Pool() as pool:
+        results = list(tqdm(pool.imap(process_scene, args_list), total=251, desc=f"Processing {scene_name}"))
+
+    return sum(results)  # Return the number of successfully processed frames
+
+
 if __name__ == "__main__":
-    base_dir = "./data/cleargrasp-dataset-train"  # Replace with your dataset path
-
+    base_dir = "./data/cleargrasp-dataset-train" 
+    scene_dirs = sorted(glob(f"{base_dir}/*"))
+    total_processed = 0  
+    
     for scene_dir in scene_dirs:
-        output_dir = f"{scene_dir}/point-clouds"  # Replace with your desired output path
+        output_dir = f"{scene_dir}/point-clouds" 
         os.makedirs(output_dir, exist_ok=True)
-        process_scene(os.path.join(base_dir, scene_dir), output_dir)
+        processed = process_scenes(scene_dir, output_dir)
+        total_processed += processed
 
 print("PCD and FO3D generation complete")
