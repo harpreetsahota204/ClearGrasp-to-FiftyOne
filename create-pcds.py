@@ -18,7 +18,7 @@ def process_scene(args):
 
     Args:
         scene_dir (str): Path to the input scene directory. This directory should contain 
-                         subdirectories for RGB images, depth maps, and JSON mask files.
+                            subdirectories for RGB images, depth maps, and JSON mask files.
         output_dir (str): Path to the output directory where PCD and FO3D files will be saved.
 
     The function expects the following file structure in the scene directory:
@@ -64,23 +64,29 @@ def process_scene(args):
         write_point_cloud(pcd_path, color_image_array, depth_array, fx, fy, cx, cy)
 
         #get quaternion
-        q_X, q_Y, q_Z, q_W = masks_dict['camera']['world_pose']['rotation']['quaternion']
+        q_W, q_X, q_Y, q_Z = masks_dict['camera']['world_pose']['rotation']['inverted_quaternion']
         quaternion = fo.Quaternion(x=q_X, y=q_Y, z=q_Z, w=q_W)
 
+        aspect_ratio = masks_dict['camera']['sensor']['width_mm'] / masks_dict['camera']['sensor']['height_mm']
+
+        fov = masks_dict['camera']['focal_length']['longest_axis']
+
         # Create 3D scene
-        scene = fo.Scene(fo.PerspectiveCamera(up="Z"))
+        scene = fo.Scene(
+            fo.PerspectiveCamera(
+                aspect=aspect_ratio,
+                fov=fov
+                )
+                )
 
         # instantiate mesh
         mesh = fo.PlyMesh(
-            base_name,
-            pcd_path,
-            is_point_cloud=True
+            name=f"{scene_name}_{base_name}",
+            ply_path=pcd_path,
+            is_point_cloud=True,
+            default_material = fo.PointCloudMaterial(),
+            quaternion = quaternion 
         )
-
-        mesh.quaternion = quaternion
-
-        #set material
-        mesh.default_material = fo.PointCloudMaterial(shading_mode="rgb")
 
         # add to scene
         scene.add(mesh)
@@ -99,17 +105,17 @@ def process_scenes(scene_dir, output_dir):
     """
     scene_name = os.path.basename(scene_dir).replace('-train', '')
 
-    args_list = [(scene_dir, output_dir, i) for i in range(251)]
+    args_list = [(scene_dir, output_dir, i) for i in range(2)]
 
     with multiprocessing.Pool() as pool:
-        results = list(tqdm(pool.imap(process_scene, args_list), total=251, desc=f"Processing {scene_name}"))
+        results = list(tqdm(pool.imap(process_scene, args_list), total=2, desc=f"Processing {scene_name}"))
 
     return sum(results)  # Return the number of successfully processed frames
 
 
 if __name__ == "__main__":
     base_dir = "/Users/harpreetsahota/workspace/ClearGrasp-to-FiftyOne/data/cleargrasp-dataset-train" 
-    scene_dirs = sorted(glob(f"{base_dir}/*"))
+    scene_dirs = sorted(glob(f"{base_dir}/*"))[:2]
     total_processed = 0  
     
     for scene_dir in scene_dirs:

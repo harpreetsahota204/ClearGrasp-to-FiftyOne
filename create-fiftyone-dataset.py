@@ -108,7 +108,7 @@ if __name__ == "__main__":
 
     DATASET_NAME = "ClearGrasp"
 
-    OBJECT_DIRS = sorted(glob(f"{DATA_DIR}/*"))
+    OBJECT_DIRS = sorted(glob(f"{DATA_DIR}/*"))[:10]
 
     # Create the FiftyOne dataset
     dataset = create_dataset(DATASET_NAME)
