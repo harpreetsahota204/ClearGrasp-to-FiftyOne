@@ -84,9 +84,11 @@ def process_scene(args):
             name=f"{scene_name}_{base_name}",
             ply_path=pcd_path,
             is_point_cloud=True,
-            default_material = fo.PointCloudMaterial(),
+            # default_material = fo.PointCloudMaterial(),
             quaternion = quaternion 
         )
+
+        # mesh.default_material = fo.PointCloudMaterial()
 
         # add to scene
         scene.add(mesh)
